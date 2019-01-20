@@ -92,7 +92,6 @@ if not os.path.exists(args.outputdir):
 
 if not os.path.exists(os.path.join(args.outputdir, "info.txt")):
     with open(os.path.join(args.outputdir, "info.txt"), "w") as outputfile:
-        outputfile.write(str(args.type) + "\n")
         outputfile.write(str(args.transfer_task) + "\n")
         outputfile.write(str(hyperparameters))
 
