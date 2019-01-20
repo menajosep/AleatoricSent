@@ -28,7 +28,6 @@ parser.add_argument("--outputdir", type=str, default='model', help="Path to the 
 
 parser.add_argument("--mode", type=int, default=0, help="0: Normal (train + test); 1: BCN model dry-run (just try creating the model and do nothing else); 2: Train + test dry-run (Load a smaller dataset and train + test on it)")
 
-parser.add_argument("--type", type=str, default="CoVe", help="What sentence embeddings to use (GloVe, CoVe_without_GloVe or CoVe). For CoVe, [GloVe(w)CoVe(w)] embeddings will be used. For CoVe_without_GloVe, GloVe(w) will not be included.")
 parser.add_argument("--transfer_task", type=str, default="SSTBinary", help="Transfer task used for training BCN and evaluating predictions (e.g. SSTBinary, SSTFine, SSTBinary_lower, SSTFine_lower, TREC6, TREC50, TREC6_lower, TREC50_lower)")
 
 parser.add_argument("--n_epochs", type=int, default=20, help="Number of epochs (int). After 5 epochs of worse dev accuracy, training will early stopped and the best epoch will be saved (based on dev accuracy).")
@@ -53,7 +52,6 @@ args, _ = parser.parse_known_args()
 def str2bool(v):
   return v.lower() in ("yes", "true", "t", "1")
 
-from sentence_encoders import GloVeEncoder, CoVeEncoder, GloVeCoVeEncoder, InferSentEncoder, GloVeInferSentEncoder
 from datasets import SSTFineDataset, SSTFineLowerDataset
 from model import ELMOBCN
 
@@ -101,32 +99,20 @@ if not os.path.exists(os.path.join(args.outputdir, "info.txt")):
 """
 DATASET
 """
-
-if args.type == "GloVe":
-    encoder = GloVeEncoder(args.glovepath, ignore_glove_header=str2bool(args.ignoregloveheader))
-elif args.type == "CoVe_without_GloVe":
-    encoder = CoVeEncoder(args.glovepath, args.covepath, ignore_glove_header=str2bool(args.ignoregloveheader), cove_dim=args.covedim)
-elif args.type == "CoVe":
-    encoder = GloVeCoVeEncoder(args.glovepath, args.covepath, ignore_glove_header=str2bool(args.ignoregloveheader), cove_dim=args.covedim)
-else:
-    print("ERROR: Unknown embeddings type. Should be GloVe, InferSent or CoVe. Set it correctly using the --type argument.")
-    sys.exit(1)
-
 if args.transfer_task == "SSTFine":
-    dataset = SSTFineDataset(args.datadir, encoder, dry_run=(args.mode == 2))
+    dataset = SSTFineDataset(args.datadir, dry_run=(args.mode == 2))
 elif args.transfer_task == "SSTFine_lower":
-    dataset = SSTFineLowerDataset(args.datadir, encoder, dry_run=(args.mode == 2))
+    dataset = SSTFineLowerDataset(args.datadir, dry_run=(args.mode == 2))
 else:
     print("ERROR: Unknown transfer task. Set it correctly using the --transfer_task argument.")
     sys.exit(1)
-encoder = None
 gc.collect()
 
 """
 BCN MODEL
 """
 
-bcn = ELMOBCN(hyperparameters, dataset.get_n_classes(), dataset.get_max_sent_len(), dataset.get_embed_dim(), args.outputdir)
+bcn = ELMOBCN(hyperparameters, dataset.get_n_classes(), dataset.get_max_sent_len(), args.outputdir)
 dev_accuracy = bcn.train(dataset)
 test_accuracy = bcn.test(dataset)
 

@@ -23,7 +23,7 @@ import numpy as np
 
 
 class SSTDataset(object):
-    def __init__(self, n_classes, folder, data_dir, encoder, dry_run=False):
+    def __init__(self, n_classes, folder, data_dir, dry_run=False):
         self.n_classes = n_classes
         if dry_run:
             train = self.load_file(os.path.join(data_dir, folder, 'dev.txt'))
@@ -33,17 +33,14 @@ class SSTDataset(object):
         test = self.load_file(os.path.join(data_dir, folder, 'test.txt'))
         textual_data = {'train': train, 'dev': dev, 'test': test}
         self.total_sentences = 0
-        samples = set()
+        self.max_sent_len = 0
         for key in textual_data:
             for tokenized_sentence in textual_data[key]['X']:
                 self.total_sentences += 1
-                for word in tokenized_sentence:
-                    samples.add(word)
+                if self.max_sent_len < len(tokenized_sentence):
+                    self.max_sent_len = len(tokenized_sentence)
         print("Successfully loaded dataset (classes: " + str(self.n_classes) + ").")
-        encoder.load(samples)
-        self.data = self.generate_embeddings(textual_data, encoder)
-        self.max_sent_len = encoder.get_max_sent_len()
-        self.embed_dim = encoder.get_embed_dim()
+        self.data = self.get_data(textual_data)
 
     def load_file(self, fpath):
         textual_data = {'X': [], 'y': []}
@@ -55,7 +52,7 @@ class SSTDataset(object):
         assert max(textual_data['y']) == self.n_classes - 1
         return textual_data
 
-    def generate_embeddings(self, textual_data, encoder):
+    def get_data(self, textual_data):
         print("\nGenerating sentence embeddings,,,")
         data = dict()
         done = 0
@@ -66,14 +63,17 @@ class SSTDataset(object):
                       int(self.total_sentences * 0.9): "90%", self.total_sentences: "100%"}
         for key in textual_data:
             data[key] = {}
+            data[key]['X1length'] = []
             data[key]['X1'] = []
             for tokenized_sentence in textual_data[key]['X']:
-                data[key]['X1'].append(encoder.encode_sentence(tokenized_sentence))
+                data[key]['X1length'].append(len(tokenized_sentence))
+                data[key]['X1'].append(self.pad(tokenized_sentence))
                 done += 1
                 if done in milestones:
                     print("  " + milestones[done])
-            data[key]['X1'] = np.array(data[key]['X1'])
+            data[key]['X1length'] = np.array(data[key]['X1length'])
             data[key]['X2'] = data[key]['X1'] # Only one input sentence is needed for SSTBinary so X1 is duplicated
+            data[key]['X2length'] = data[key]['X1length']  # Only one input sentence is needed for SSTBinary so X1 is duplicated
             data[key]['y'] = np.array(textual_data[key]['y'])
         print("Successfully generated sentence embeddings,")
         return data
@@ -81,22 +81,20 @@ class SSTDataset(object):
     def get_total_samples(self, key):
         return len(self.data[key]['y'])
 
-    def pad(self, embeddings):
-        padded_embeddings = []
-        for embedding in embeddings:
-            for pad in range(self.max_sent_len - len(embedding)):
-                embedding = np.append(embedding, np.full((1, self.embed_dim), 0.0), axis=0)
-            assert embedding.shape == (len(embedding), self.embed_dim)
-            padded_embeddings.append([embedding])
-        return np.vstack(padded_embeddings)
+    def pad(self, sentence):
+        empties = [''] * (self.max_sent_len - len(sentence))
+        sentence.extend(empties)
+        return sentence
 
     def get_batch(self, key, indexes=None):
         if indexes is None:
-            return self.pad(self.data[key]['X1']), self.pad(self.data[key]['X2']), self.data[key]['y']
-        X1 = self.pad(np.take(self.data[key]['X1'], indexes, axis=0))
-        X2 = self.pad(np.take(self.data[key]['X2'], indexes, axis=0))
+            return self.data[key]['X1'], self.data[key]['X2'], self.data[key]['y']
+        X1 = np.take(self.data[key]['X1'], indexes, axis=0)
+        X1length = np.take(self.data[key]['X1length'], indexes, axis=0)
+        X2 = np.take(self.data[key]['X2'], indexes, axis=0)
+        X2length = np.take(self.data[key]['X2length'], indexes, axis=0)
         y = np.take(self.data[key]['y'], indexes, axis=0)
-        return X1, X2, y
+        return X1, X1length, X2, X2length, y
 
     def get_n_classes(self):
         return self.n_classes
@@ -104,16 +102,14 @@ class SSTDataset(object):
     def get_max_sent_len(self):
         return self.max_sent_len
 
-    def get_embed_dim(self):
-        return self.embed_dim
 
 class SSTFineDataset(SSTDataset):
-    def __init__(self, data_dir, encoder, dry_run=False):
+    def __init__(self, data_dir, dry_run=False):
         print("\nLoading SST Fine dataset...")
-        super(SSTFineDataset, self).__init__(5, "SSTFine", data_dir, encoder, dry_run=dry_run)
+        super(SSTFineDataset, self).__init__(5, "SSTFine", data_dir, dry_run=dry_run)
 
 class SSTFineLowerDataset(SSTDataset):
-    def __init__(self, data_dir, encoder, dry_run=False):
+    def __init__(self, data_dir, dry_run=False):
         print("\nLoading SST Fine (lowercase) dataset...")
-        super(SSTFineLowerDataset, self).__init__(5, "SSTFine_lower", data_dir, encoder, dry_run=dry_run)
+        super(SSTFineLowerDataset, self).__init__(5, "SSTFine_lower", data_dir, dry_run=dry_run)
 

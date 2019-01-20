@@ -24,6 +24,7 @@ import gc
 
 import numpy as np
 import tensorflow as tf
+import tensorflow_hub as hub
 
 
 # Helper function for asserting that dimensions are correct and allowing for "None" dimensions
@@ -32,21 +33,37 @@ def dimensions_equal(dim1, dim2):
 
 
 class ELMOBCN:
-    def __init__(self, params, n_classes, max_sent_len, embed_dim, outputdir, weight_init=0.01, bias_init=0.01):
+    def __init__(self, params, n_classes, max_sent_len, outputdir, weight_init=0.01, bias_init=0.01):
         self.params = params
         self.n_classes = n_classes
         self.max_sent_len = max_sent_len
-        self.embed_dim = embed_dim
         self.outputdir = outputdir
         self.W_init = weight_init
         self.b_init = bias_init
+        self.embed_dim = 1024
 
     def create_model(self):
         print("\nCreating BCN model...")
-
+        elmo = hub.Module("https://tfhub.dev/google/elmo/2", trainable=True)
+        textinputs1 = tf.placeholder(tf.string, shape=[None, self.max_sent_len])
+        inputs1length = tf.placeholder(tf.int32, shape=[None])
+        textinputs2 = tf.placeholder(tf.string, shape=[None, self.max_sent_len])
+        inputs2length = tf.placeholder(tf.int32, shape=[None])
         # Takes 2 input sequences, each of the form [GloVe(w); CoVe(w)] (duplicated if only one input sequence is needed)
-        inputs1 = tf.placeholder(tf.float32, shape=[None, self.max_sent_len, self.embed_dim])
-        inputs2 = tf.placeholder(tf.float32, shape=[None, self.max_sent_len, self.embed_dim])
+        inputs1 = elmo(
+                        inputs={
+                        "tokens": textinputs1,
+                        "sequence_len": inputs1length
+                        },
+                        signature="tokens",
+                        as_dict=True)["elmo"]
+        inputs2 = elmo(
+                        inputs={
+                        "tokens": textinputs2,
+                        "sequence_len": inputs2length
+                        },
+                        signature="tokens",
+                        as_dict=True)["elmo"]
         labels = tf.placeholder(tf.int32, [None])
         is_training = tf.placeholder(tf.bool)
         assert dimensions_equal(inputs1.shape, (self.params['batch_size'], self.max_sent_len, self.embed_dim))
@@ -262,7 +279,7 @@ class ELMOBCN:
             predict = tf.argmax(tf.nn.softmax(logits), axis=1)
 
         print("Successfully created BCN model.")
-        return inputs1, inputs2, labels, is_training, predict, cost, train_step
+        return textinputs1, inputs1length, textinputs2, inputs2length, labels, is_training, predict, cost, train_step
 
     def dry_run(self):
         tf.reset_default_graph()
@@ -273,7 +290,7 @@ class ELMOBCN:
         best_dev_accuracy = -1
         tf.reset_default_graph()
         with tf.Graph().as_default() as graph:
-            inputs1, inputs2, labels, is_training, predict, loss_op, train_op = self.create_model()
+            textinputs1, inputs1length, textinputs2, inputs2length, labels, is_training, predict, loss_op, train_op = self.create_model()
         with tf.Session(graph=graph) as sess:
             print("\nTraining model...")
             sess.run(tf.global_variables_initializer())
@@ -294,19 +311,20 @@ class ELMOBCN:
                 indexes = np.random.permutation(train_data_len)
                 for i in range(total_train_batches):
                     batch_indexes = indexes[i * self.params['batch_size']: (i + 1) * self.params['batch_size']]
-                    batch_X1, batch_X2, batch_y = dataset.get_batch('train', batch_indexes)
-                    _, loss = sess.run([train_op, loss_op], feed_dict={inputs1: batch_X1, inputs2: batch_X2,
+                    batch_X1, batchX1length, batch_X2, batch_X2length, batch_y = dataset.get_batch('train', batch_indexes)
+                    _, loss = sess.run([train_op, loss_op], feed_dict={textinputs1: batch_X1, textinputs2: batch_X2,
+                                                                       inputs1length: batchX1length,
+                                                                       inputs2length: batch_X2length,
                                                                        labels: batch_y, is_training: True})
                     average_loss += (loss / total_train_batches)
                     done += 1
                     if done in train_milestones:
                         print("    " + train_milestones[done])
                 print("    Loss: " + str(average_loss))
-                #print("    Computing train accuracy...")
-                #train_accuracy = self.calculate_accuracy(dataset, sess, inputs1, inputs2, labels, is_training, predict, set_name="train_cut")
-                #print("      Train accuracy:" + str(train_accuracy))
                 print("    Computing dev accuracy...")
-                dev_accuracy = self.calculate_accuracy(dataset, sess, inputs1, inputs2, labels, is_training, predict, set_name="dev")
+                dev_accuracy = self.calculate_accuracy(dataset, sess, textinputs1, inputs1length,
+                                                       textinputs2, inputs2length, labels, is_training,
+                                                       predict, set_name="dev")
                 print("      Dev accuracy:" + str(dev_accuracy))
                 print("    Epoch took %s seconds" % (timeit.default_timer() - epoch_start_time))
                 if dev_accuracy > best_dev_accuracy:
@@ -326,7 +344,7 @@ class ELMOBCN:
             print("Best dev accuracy: " + str(best_dev_accuracy))
         return best_dev_accuracy
 
-    def calculate_accuracy(self, dataset, sess, inputs1, inputs2, labels, is_training, predict, set_name="test", verbose=False):
+    def calculate_accuracy(self, dataset, sess, textinputs1, inputs1length, textinputs2, inputs2length, labels, is_training, predict, set_name="test", verbose=False):
         test_data_len = dataset.get_total_samples(set_name)
         total_test_batches = test_data_len // self.params['batch_size']
         test_milestones = {int(total_test_batches * 0.1): "10%", int(total_test_batches * 0.2): "20%",
@@ -340,10 +358,12 @@ class ELMOBCN:
         indexes = np.arange(test_data_len)
         for i in range(total_test_batches):
             batch_indexes = indexes[i * self.params['batch_size']: (i + 1) * self.params['batch_size']]
-            batch_X1, batch_X2, batch_y = dataset.get_batch(set_name, batch_indexes)
+            batch_X1, batchX1length, batch_X2, batch_X2length, batch_y = dataset.get_batch(set_name, batch_indexes)
             for item in batch_y:
                 test_y.append(item)
-            batch_pred = list(sess.run(predict, feed_dict={inputs1: batch_X1, inputs2: batch_X2,
+            batch_pred = list(sess.run(predict, feed_dict={textinputs1: batch_X1, textinputs2: batch_X2,
+                                                           inputs1length: batchX1length,
+                                                           inputs2length: batch_X2length,
                                                            labels: batch_y, is_training: False}))
             for item in batch_pred:
                 predicted.append(item)
@@ -355,11 +375,13 @@ class ELMOBCN:
     def test(self, dataset):
         tf.reset_default_graph()
         with tf.Graph().as_default() as graph:
-            inputs1, inputs2, labels, is_training, predict, _, _ = self.create_model()
+            textinputs1, inputs1length, textinputs2, inputs2length, labels, is_training, predict, _, _ = self.create_model()
         with tf.Session(graph=graph) as sess:
             print("\nComputing test accuracy...")
             sess.run(tf.global_variables_initializer())
             tf.train.Saver().restore(sess, os.path.join(self.outputdir, 'model'))
-            accuracy = self.calculate_accuracy(dataset, sess, inputs1, inputs2, labels, is_training, predict, verbose=True)
+            accuracy = self.calculate_accuracy(dataset, sess, textinputs1, inputs1length,
+                                               textinputs2, inputs2length,
+                                               labels, is_training, predict, verbose=True)
             print("Test accuracy:    " + str(accuracy))
         return accuracy
