@@ -21,7 +21,7 @@ parser = argparse.ArgumentParser(description='Replication of the CoVe Biattentiv
 
 parser.add_argument("--glovepath", type=str, default="../../Word2Vec_models/GloVe/glove.840B.300d.txt", help="Path to GloVe word embeddings. Download glove.840B.300d embeddings from https://nlp.stanford.edu/projects/glove/")
 parser.add_argument("--ignoregloveheader", type=str, default="False", help="Set this to \"True\" if the first line of the GloVe file is a header and not a (word, embedding) pair")
-parser.add_argument("--covepath", type=str, default='../CoVe-ported/Keras_CoVe.h5', help="Path to the CoVe model")
+parser.add_argument("--covepath", type=str, default='../Cove-ported/Keras_CoVe.h5', help="Path to the CoVe model")
 parser.add_argument("--covedim", type=int, default=600, help="Number of dimensions in CoVe embeddings (default: 600)")
 parser.add_argument("--datadir", type=str, default='../datasets', help="Path to the directory that contains the datasets")
 parser.add_argument("--outputdir", type=str, default='model', help="Path to the directory where the BCN model will be saved")
