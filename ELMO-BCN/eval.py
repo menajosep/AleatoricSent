@@ -17,12 +17,8 @@ import gc
 
 start_time = timeit.default_timer()
 
-parser = argparse.ArgumentParser(description='Replication of the CoVe Biattentive Classification Network (BCN)')
+parser = argparse.ArgumentParser(description='Replication of the CoVe BCN using ELMO as input embedding')
 
-parser.add_argument("--glovepath", type=str, default="../../Word2Vec_models/GloVe/glove.840B.300d.txt", help="Path to GloVe word embeddings. Download glove.840B.300d embeddings from https://nlp.stanford.edu/projects/glove/")
-parser.add_argument("--ignoregloveheader", type=str, default="False", help="Set this to \"True\" if the first line of the GloVe file is a header and not a (word, embedding) pair")
-parser.add_argument("--covepath", type=str, default='../CoVe-ported/Keras_CoVe.h5', help="Path to the CoVe model")
-parser.add_argument("--covedim", type=int, default=600, help="Number of dimensions in CoVe embeddings (default: 600)")
 parser.add_argument("--datadir", type=str, default='../datasets', help="Path to the directory that contains the datasets")
 parser.add_argument("--outputdir", type=str, default='model', help="Path to the directory where the BCN model will be saved")
 
@@ -38,9 +34,7 @@ parser.add_argument("--bilstm_encoder_forget_bias", type=float, default=1.0, hel
 parser.add_argument("--bilstm_integrate_n_hidden", type=int, default=300, help="Number of hidden states in integrate's BiLSTMs (int)")
 parser.add_argument("--bilstm_integrate_forget_bias", type=float, default=1.0, help="Forget bias for integrate's BiLSTMs (float)")
 parser.add_argument("--dropout_ratio", type=float, default=0.1, help="Ratio for dropout applied before Feedforward Network and before each Batch Norm (float)")
-parser.add_argument("--maxout_reduction", type=int, default=2, help="On the first and second maxout layers, the dimensionality is divided by this number (int)")
-parser.add_argument("--bn_decay", type=float, default=0.999, help="Decay for each batch normalisation layer (float)")
-parser.add_argument("--bn_epsilon", type=float, default=1e-3, help="Epsilon for each batch normalisation layer (float)")
+parser.add_argument("--output_reduction", type=int, default=2, help="On the first and second maxout layers, the dimensionality is divided by this number (int)")
 parser.add_argument("--optimizer", type=str, default="adam", help="Optimizer (adam or gradientdescent)")
 parser.add_argument("--learning_rate", type=float, default=0.0001, help="Leaning rate (float)")
 parser.add_argument("--adam_beta1", type=float, default=0.9, help="Beta1 for adam optimiser if adam optimiser is used (float)")
@@ -71,10 +65,7 @@ hyperparameters = {
     'bilstm_integrate_forget_bias': args.bilstm_integrate_forget_bias, # float
 
     'dropout_ratio': args.dropout_ratio, # float. Used by McCann et al.: 0.1, 0.2 or 0.3
-    'maxout_reduction': args.maxout_reduction, # int. Used by McCann et al.: 2, 4 or 8
-
-    'bn_decay': args.bn_decay, # float
-    'bn_epsilon': args.bn_epsilon, # float
+    'output_reduction': args.output_reduction, # int. Used by McCann et al.: 2, 4 or 8
 
     'optimizer': args.optimizer, # "adam" or "gradientdescent". Used by McCann et al.: "adam"
     'learning_rate': args.learning_rate, # float. Used by McCann et al.: 0.001

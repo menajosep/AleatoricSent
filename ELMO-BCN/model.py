@@ -228,7 +228,7 @@ class ELMOBCN:
             # Output layer 1: Dropout, fully-connected layer, D->(D/(2 or 4 or 8)) relu
             dp1 = tf.layers.dropout(joined, rate=self.params['dropout_ratio'], training=is_training)
             assert dimensions_equal(dp1.shape, (self.params['batch_size'], self.params['bilstm_integrate_n_hidden']*2*4*2))
-            output_dim1 = int((self.params['bilstm_integrate_n_hidden'] * 2 * 4 * 2) / self.params['maxout_reduction'])
+            output_dim1 = int((self.params['bilstm_integrate_n_hidden'] * 2 * 4 * 2) / self.params['output_reduction'])
             output_weight1 = tf.get_variable("output_weight1", shape=[self.params['bilstm_integrate_n_hidden']*2*4*2,
                                                                       output_dim1],
                                              initializer=tf.random_uniform_initializer(-self.W_init, self.W_init))
